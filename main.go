@@ -1,7 +1,17 @@
 package main
 
-import "fmt"
+import (
+	"log"
+
+	"github.com/gin-gonic/gin"
+	"github.com/joho/godotenv"
+)
 
 func main() {
-	fmt.Println("hello batman")
+	err := godotenv.Load(".env")
+	if err != nil {
+		log.Fatalf("Error loading .env file: %v", err)
+	}
+	router := gin.New()
+	router.Use(gin.Logger())
 }

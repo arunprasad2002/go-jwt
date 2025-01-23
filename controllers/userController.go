@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net/http"
 	"time"
@@ -12,6 +13,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
@@ -65,6 +67,22 @@ func SignUp() gin.HandlerFunc {
 			return
 		}
 
+		user.Created_at, _ = time.Parse(time.RFC3339, time.Now().Format(time.RFC3339))
+		user.Updated_at, _ = time.Parse(time.RFC3339, time.Now().Format(time.RFC3339))
+		user.ID = primitive.NewObjectID()
+		userID := user.ID.Hex()
+		user.User_id = &userID
+		token, refreshToken, _ := helpers.GenerateAllTokens(*user.Email, *user.First_name, *user.Last_name, *user.User_type, *user.User_id)
+		user.Token = &token
+		user.Refresh_token = &refreshToken
+		resultInsertionNumber, insertErr := userCollection.InsertOne(context, user)
+
+		if insertErr != nil {
+			msg := fmt.Sprintf("User is not created")
+			ctx.JSON(http.StatusInternalServerError, gin.H{"error": msg})
+		}
+		defer cancel()
+		ctx.JSON(http.StatusOK, resultInsertionNumber)
 	}
 }
 

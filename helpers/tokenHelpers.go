@@ -25,32 +25,50 @@ type SingnedDetails struct {
 
 var userCollection *mongo.Collection = database.OpenCollection(database.Client, "user")
 
-func GenerateAllTokens(email string, firstName string, lastName string, userType string, uid string) (singedToken string, singedRefreshToken string, err error) {
-	claims := &SingnedDetails{
+type SignedDetails struct {
+	Email      string `json:"email"`
+	First_name string `json:"first_name"`
+	Last_name  string `json:"last_name"`
+	Uid        string `json:"uid"`
+	User_type  string `json:"user_type"`
+	jwt.StandardClaims
+}
+
+var SECRET_KEY = "your-secret-key" // Replace with a strong secret key
+
+func GenerateAllTokens(email string, firstName string, lastName string, userType string, uid string) (signedToken string, signedRefreshToken string, err error) {
+	claims := &SignedDetails{
 		Email:      email,
 		First_name: firstName,
 		Last_name:  lastName,
 		Uid:        uid,
 		User_type:  userType,
 		StandardClaims: jwt.StandardClaims{
-			ExpiresAt: time.Now().Local().Add(time.Hour * time.Duration(24)).Unix(),
+			ExpiresAt: time.Now().Add(24 * time.Hour).Unix(), // Token expires in 24 hours
 		},
 	}
-	refreshClaims := &SingnedDetails{
+
+	refreshClaims := &SignedDetails{
 		StandardClaims: jwt.StandardClaims{
-			ExpiresAt: time.Now().Local().Add(time.Hour * time.Duration(168)).Unix(),
+			ExpiresAt: time.Now().Add(168 * time.Hour).Unix(), // Refresh token expires in 7 days
 		},
 	}
 
-	token, err := jwt.NewWithClaims(jwt.SigningMethodES256, claims).SignedString([]byte(""))
-	refreshToken, err := jwt.NewWithClaims(jwt.SigningMethodES256, refreshClaims).SignedString([]byte(""))
-
-	if err != nil {
-		log.Panic(err)
-		return
+	// Create access token
+	token, tokenErr := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte(SECRET_KEY))
+	if tokenErr != nil {
+		log.Panic(tokenErr)
+		return "", "", tokenErr
 	}
 
-	return token, refreshToken, err
+	// Create refresh token
+	refreshToken, refreshErr := jwt.NewWithClaims(jwt.SigningMethodHS256, refreshClaims).SignedString([]byte(SECRET_KEY))
+	if refreshErr != nil {
+		log.Panic(refreshErr)
+		return "", "", refreshErr
+	}
+
+	return token, refreshToken, nil
 }
 
 func ValidateToken(singedToken string) (claims *SingnedDetails, msg string) {

@@ -4,6 +4,7 @@ import (
 	"errors"
 
 	"github.com/gin-gonic/gin"
+	"golang.org/x/crypto/bcrypt"
 )
 
 func ChekcUserType(ctx *gin.Context, role string) (err error) {
@@ -27,4 +28,14 @@ func MatchUserToUid(ctx *gin.Context, userId string) (err error) {
 	}
 	err = ChekcUserType(ctx, userType)
 	return err
+}
+
+// VerifyPassword checks if the provided password matches the hashed password
+func VerifyPassword(providedPassword, storedHashedPassword string) (bool, string) {
+	// Compare the hashed password with the provided password
+	err := bcrypt.CompareHashAndPassword([]byte(storedHashedPassword), []byte(providedPassword))
+	if err != nil {
+		return false, "Email or password is incorrect"
+	}
+	return true, "Password verified successfully"
 }

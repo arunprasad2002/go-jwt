@@ -177,40 +177,100 @@ func GetUsers() gin.HandlerFunc {
 
 func Login() gin.HandlerFunc {
 	return func(c *gin.Context) {
+		fmt.Println("Step 1: Received Login Request")
+
 		var ctx, cancel = context.WithTimeout(context.Background(), 100*time.Second)
+		defer cancel()
+
 		var user models.User
 		var foundUser models.User
 
+		// Bind JSON input
 		if err := c.BindJSON(&user); err != nil {
+			fmt.Println("Error parsing request body:", err)
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
 
-		err := userCollection.FindOne(ctx, bson.M{"email": user.Email}).Decode(&foundUser)
-		defer cancel()
+		// Ensure email is not nil
+		if user.Email == nil {
+			fmt.Println("Step 2: Email is nil")
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Email is required"})
+			return
+		}
+		fmt.Println("Step 2: Received email:", *user.Email)
+
+		// Query the database for the user
+		fmt.Println("Step 3: Searching for user in DB")
+		err := userCollection.FindOne(ctx, bson.M{"email": *user.Email}).Decode(&foundUser)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "email or password is incorrect"})
+			fmt.Println("Step 3 Error: User not found in DB", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Email or password is incorrect"})
+			return
+		}
+		fmt.Println("Step 3: User found in DB:", foundUser.Email)
+
+		// Ensure password is not nil
+		if user.Password == nil {
+			fmt.Println("Step 4: Password is nil")
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Password is required"})
+			return
+		}
+		fmt.Println("Step 4: Checking password")
+
+		// Verify the password
+		passwordIsValid, msg := helpers.VerifyPassword(*user.Password, *foundUser.Password)
+		if !passwordIsValid {
+			fmt.Println("Step 4 Error: Password incorrect", msg)
+			c.JSON(http.StatusUnauthorized, gin.H{"error": msg})
+			return
+		}
+		fmt.Println("Step 4: Password verified successfully")
+
+		// Ensure user_type is not nil
+		if foundUser.User_type == nil {
+			fmt.Println("Step 5 Error: User type is nil")
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "User type not found"})
 			return
 		}
 
-		passwordIsValid, msg := VerifyPassword(*user.Password, *foundUser.Password)
-		defer cancel()
-		if passwordIsValid != true {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": msg})
+		// Generate tokens
+		fmt.Println("Step 5: Generating tokens")
+		token, refreshToken, err := helpers.GenerateAllTokens(
+			*foundUser.Email,
+			*foundUser.First_name,
+			*foundUser.Last_name,
+			*foundUser.User_type,
+			*foundUser.User_id,
+		)
+		if err != nil {
+			fmt.Println("Step 5 Error: Token generation failed", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Token generation failed"})
 			return
 		}
+		fmt.Println("Step 5: Tokens generated successfully")
 
-		if foundUser.Email == nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "user not found"})
-		}
-		token, refreshToken, _ := helpers.GenerateAllTokens(*foundUser.Email, *foundUser.First_name, *foundUser.Last_name, *foundUser.User_type, *foundUser.User_id)
+		// Update user tokens in DB
+		fmt.Println("Step 6: Updating tokens in DB")
 		helpers.UpdateAllTokens(token, refreshToken, foundUser.User_id)
-		err = userCollection.FindOne(ctx, bson.M{"user_id": foundUser.User_id}).Decode(&foundUser)
 
+		// Fetch updated user
+		err = userCollection.FindOne(ctx, bson.M{"user_id": foundUser.User_id}).Decode(&foundUser)
 		if err != nil {
+			fmt.Println("Step 6 Error: Failed to retrieve updated user", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
-		c.JSON(http.StatusOK, foundUser)
+		fmt.Println("Step 6: User updated successfully")
+
+		// Hide password before sending response
+		foundUser.Password = nil
+
+		// Send success response
+		fmt.Println("Step 7: Login successful")
+		c.JSON(http.StatusOK, gin.H{
+			"message": "Login successful",
+			"user":    foundUser,
+		})
 	}
 }

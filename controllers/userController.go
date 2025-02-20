@@ -44,70 +44,76 @@ func VerifyPassword(userPassword string, providedPassword string) (bool, string)
 
 func SignUp() gin.HandlerFunc {
 	return func(ctx *gin.Context) {
-		var context, cancel = context.WithTimeout(context.Background(), 100*time.Second)
-		var user models.User
+		ctxTimeout, cancel := context.WithTimeout(context.Background(), 100*time.Second)
 		defer cancel()
 
-		err := ctx.BindJSON(&user)
+		var user models.User
 
+		err := ctx.BindJSON(&user)
 		if err != nil {
 			ctx.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
 
 		validateErr := validate.Struct(user)
-
 		if validateErr != nil {
-			ctx.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
+			ctx.JSON(http.StatusBadRequest, gin.H{"error": validateErr.Error()})
 			return
 		}
 
-		userEmailCount, err := userCollection.CountDocuments(context, bson.M{"emal": user.Email})
-		defer cancel()
-
+		// Check if email already exists
+		userEmailCount, err := userCollection.CountDocuments(ctxTimeout, bson.M{"email": user.Email})
 		if err != nil {
 			log.Panic(err)
-			ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-			return
-		}
-
-		userPhoneCount, err := userCollection.CountDocuments(context, bson.M{"phone": user.Phone})
-		defer cancel()
-		if err != nil {
-			log.Panic(err)
-			ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Error checking email"})
 			return
 		}
 
 		if userEmailCount > 0 {
-			ctx.JSON(http.StatusInternalServerError, gin.H{"error": "email already exist"})
+			ctx.JSON(http.StatusConflict, gin.H{"error": "Email already exists"})
 			return
 		}
 
+		// Check if phone number already exists
+		userPhoneCount, err := userCollection.CountDocuments(ctxTimeout, bson.M{"phone": user.Phone})
+		if err != nil {
+			log.Panic(err)
+			ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Error checking phone number"})
+			return
+		}
+
+		if userPhoneCount > 0 {
+			ctx.JSON(http.StatusConflict, gin.H{"error": "Phone number already exists"})
+			return
+		}
+
+		// Hash password safely
+		if user.Password == nil {
+			ctx.JSON(http.StatusBadRequest, gin.H{"error": "Password is required"})
+			return
+		}
 		password := HashPassword(*user.Password)
 		user.Password = &password
 
-		if userPhoneCount > 0 {
-			ctx.JSON(http.StatusInternalServerError, gin.H{"error": "phone already exist"})
-			return
-		}
-
-		user.Created_at, _ = time.Parse(time.RFC3339, time.Now().Format(time.RFC3339))
-		user.Updated_at, _ = time.Parse(time.RFC3339, time.Now().Format(time.RFC3339))
+		// Assign user details
+		user.Created_at = time.Now()
+		user.Updated_at = time.Now()
 		user.ID = primitive.NewObjectID()
 		userID := user.ID.Hex()
 		user.User_id = &userID
+
 		token, refreshToken, _ := helpers.GenerateAllTokens(*user.Email, *user.First_name, *user.Last_name, *user.User_type, *user.User_id)
 		user.Token = &token
 		user.Refresh_token = &refreshToken
-		resultInsertionNumber, insertErr := userCollection.InsertOne(context, user)
 
+		// Insert user into database
+		result, insertErr := userCollection.InsertOne(ctxTimeout, user)
 		if insertErr != nil {
-			msg := fmt.Sprintf("User is not created")
-			ctx.JSON(http.StatusInternalServerError, gin.H{"error": msg})
+			ctx.JSON(http.StatusInternalServerError, gin.H{"error": "User is not created"})
+			return
 		}
-		defer cancel()
-		ctx.JSON(http.StatusOK, resultInsertionNumber)
+
+		ctx.JSON(http.StatusOK, gin.H{"message": "User created successfully", "user_id": result.InsertedID})
 	}
 }
 

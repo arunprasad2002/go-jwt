@@ -3,10 +3,16 @@ package controllers
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
+	"time"
 
+	"github.com/arunprasad2002/go-jwt/helpers"
+	"github.com/arunprasad2002/go-jwt/models"
 	"github.com/gin-gonic/gin"
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 )
@@ -43,7 +49,7 @@ func GoogleCallback(c *gin.Context) {
 		return
 	}
 
-	// Fetch user information
+	// Fetch user info from Google
 	client := googleOauthConfig.Client(context.Background(), token)
 	resp, err := client.Get("https://www.googleapis.com/oauth2/v2/userinfo")
 	if err != nil {
@@ -58,11 +64,62 @@ func GoogleCallback(c *gin.Context) {
 		return
 	}
 
-	// Here, you can check if the user exists in your database.
-	// If not, create a new user and generate a JWT token for authentication.
+	email, emailOk := userInfo["email"].(string)
+	firstName, firstNameOk := userInfo["given_name"].(string)
+	lastName, lastNameOk := userInfo["family_name"].(string)
 
-	c.JSON(http.StatusOK, gin.H{
-		"message":  "Google login successful",
-		"userInfo": userInfo,
-	})
+	if !emailOk || !firstNameOk || !lastNameOk {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid user data from Google"})
+		return
+	}
+
+	// Check if user exists in DB
+	var ctx, cancel = context.WithTimeout(context.Background(), 100*time.Second)
+	defer cancel()
+
+	var foundUser models.User
+	err = userCollection.FindOne(ctx, bson.M{"email": email}).Decode(&foundUser)
+
+	if err != nil {
+		// Create new user if not found
+		newUser := models.User{
+			Email:      &email,
+			First_name: &firstName,
+			Last_name:  &lastName,
+			User_type:  stringPointer("user"), // Default user type
+			User_id:    stringPointer(primitive.NewObjectID().Hex()),
+		}
+
+		_, err := userCollection.InsertOne(ctx, newUser)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create user"})
+			return
+		}
+		foundUser = newUser
+	}
+
+	// Generate JWT tokens
+	tokenStr, refreshToken, err := helpers.GenerateAllTokens(
+		*foundUser.Email,
+		*foundUser.First_name,
+		*foundUser.Last_name,
+		*foundUser.User_type,
+		*foundUser.User_id,
+	)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Token generation failed"})
+		return
+	}
+
+	// Update tokens in DB
+	helpers.UpdateAllTokens(tokenStr, refreshToken, foundUser.User_id)
+
+	// Redirect user to frontend with tokens (or store in cookies)
+	redirectURL := fmt.Sprintf("http://localhost:3000/auth/callback?token=%s&refreshToken=%s", tokenStr, refreshToken)
+	c.Redirect(http.StatusFound, redirectURL)
+}
+
+// Helper function to create string pointers
+func stringPointer(s string) *string {
+	return &s
 }

@@ -8,4 +8,8 @@ import (
 func AuthRoutes(router *gin.Engine) {
 	router.POST("/users/signup", controllers.SignUp())
 	router.POST("/users/login", controllers.Login())
+
+	// Google OAuth routes
+	router.GET("/auth/google/login", controllers.GoogleLogin)
+	router.GET("/auth/google/callback", controllers.GoogleCallback)
 }

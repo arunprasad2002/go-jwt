@@ -113,9 +113,14 @@ func GoogleCallback(c *gin.Context) {
 
 	// Update tokens in DB
 	helpers.UpdateAllTokens(tokenStr, refreshToken, foundUser.User_id)
+	// Get base URL from environment variable
+	baseURL := os.Getenv("CREATE_RESUME_BASE_URL")
+	if baseURL == "" {
+		baseURL = "http://localhost:3000" // Fallback if not set
+	}
 
 	// Redirect user to frontend with tokens (or store in cookies)
-	redirectURL := fmt.Sprintf("http://localhost:3000/auth/callback?token=%s&refreshToken=%s", tokenStr, refreshToken)
+	redirectURL := fmt.Sprintf("%s?token=%s&refreshToken=%s", baseURL, tokenStr, refreshToken)
 	c.Redirect(http.StatusFound, redirectURL)
 }
 

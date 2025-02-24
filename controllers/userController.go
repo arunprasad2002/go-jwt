@@ -45,7 +45,7 @@ func VerifyPassword(userPassword string, providedPassword string) (bool, string)
 func SignUp() gin.HandlerFunc {
 	return func(ctx *gin.Context) {
 		ctxTimeout, cancel := context.WithTimeout(context.Background(), 100*time.Second)
-		defer cancel()
+		defer cancel() // Only once
 
 		var user models.User
 
@@ -61,11 +61,17 @@ func SignUp() gin.HandlerFunc {
 			return
 		}
 
-		// Check if email already exists
+		// Check if email exists
 		userEmailCount, err := userCollection.CountDocuments(ctxTimeout, bson.M{"email": user.Email})
 		if err != nil {
-			log.Panic(err)
-			ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Error checking email"})
+			ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		// Check if phone exists
+		userPhoneCount, err := userCollection.CountDocuments(ctxTimeout, bson.M{"phone": user.Phone})
+		if err != nil {
+			ctx.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
 
@@ -74,46 +80,35 @@ func SignUp() gin.HandlerFunc {
 			return
 		}
 
-		// Check if phone number already exists
-		userPhoneCount, err := userCollection.CountDocuments(ctxTimeout, bson.M{"phone": user.Phone})
-		if err != nil {
-			log.Panic(err)
-			ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Error checking phone number"})
-			return
-		}
-
 		if userPhoneCount > 0 {
-			ctx.JSON(http.StatusConflict, gin.H{"error": "Phone number already exists"})
+			ctx.JSON(http.StatusConflict, gin.H{"error": "Phone already exists"})
 			return
 		}
 
-		// Hash password safely
-		if user.Password == nil {
-			ctx.JSON(http.StatusBadRequest, gin.H{"error": "Password is required"})
-			return
-		}
+		// Hash password
 		password := HashPassword(*user.Password)
 		user.Password = &password
 
-		// Assign user details
+		// Set timestamps
 		user.Created_at = time.Now()
 		user.Updated_at = time.Now()
 		user.ID = primitive.NewObjectID()
 		userID := user.ID.Hex()
 		user.User_id = &userID
 
+		// Generate JWT tokens
 		token, refreshToken, _ := helpers.GenerateAllTokens(*user.Email, *user.First_name, *user.Last_name, *user.User_type, *user.User_id)
 		user.Token = &token
 		user.Refresh_token = &refreshToken
 
-		// Insert user into database
-		result, insertErr := userCollection.InsertOne(ctxTimeout, user)
+		// Insert user into DB
+		resultInsertionNumber, insertErr := userCollection.InsertOne(ctxTimeout, user)
 		if insertErr != nil {
-			ctx.JSON(http.StatusInternalServerError, gin.H{"error": "User is not created"})
+			ctx.JSON(http.StatusInternalServerError, gin.H{"error": "User could not be created"})
 			return
 		}
 
-		ctx.JSON(http.StatusOK, gin.H{"message": "User created successfully", "user_id": result.InsertedID})
+		ctx.JSON(http.StatusOK, resultInsertionNumber)
 	}
 }
 

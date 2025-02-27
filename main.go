@@ -11,14 +11,16 @@ import (
 )
 
 func main() {
+	// Attempt to load .env but do NOT crash if it's missing
 	err := godotenv.Load(".env")
 	if err != nil {
-		log.Fatalf("Error loading .env file: %v", err)
+		log.Println("Warning: No .env file found, using system environment variables")
 	}
 
+	// Get PORT from environment variables, fallback to 8080
 	PORT := os.Getenv("PORT")
 	if PORT == "" {
-		PORT = "8080" // Default to port 8080 if not set
+		PORT = "8080"
 	}
 
 	router := gin.New()
@@ -33,9 +35,13 @@ func main() {
 		AllowCredentials: true,
 	}))
 
+	// Initialize routes
 	routes.AuthRoutes(router)
 	routes.UserRoutes(router)
 
 	log.Printf("Server running on port %s", PORT)
-	router.Run(":" + PORT)
+	err = router.Run(":" + PORT)
+	if err != nil {
+		log.Fatalf("Failed to start server: %v", err)
+	}
 }

@@ -11,21 +11,18 @@ import (
 )
 
 func main() {
-	// More robust check for Railway environment
+	// Check if running on Railway
 	isRailway := os.Getenv("RAILWAY_ENVIRONMENT") != "" || os.Getenv("RAILWAY_STATIC_URL") != ""
 
-	// Load .env only in local development
+	// Load .env in local development
 	if !isRailway {
 		err := godotenv.Load(".env")
 		if err != nil {
 			log.Println("No .env file found, using system environment variables")
 		}
 	} else {
-		log.Println("Running in Railway environment, using Railway environment variables")
+		log.Println("Running in Railway environment, using Railway variables")
 	}
-
-	// Debug: Print important environment variables
-	logEnvironmentVariables()
 
 	// Get PORT from environment (Railway sets this automatically)
 	PORT := os.Getenv("PORT")
@@ -42,7 +39,7 @@ func main() {
 	// Initialize Gin router
 	router := gin.Default()
 
-	// Configure CORS with more specific settings if needed
+	// Configure CORS
 	config := cors.DefaultConfig()
 	config.AllowAllOrigins = true
 	config.AllowCredentials = true
@@ -57,24 +54,4 @@ func main() {
 	// Start server
 	log.Printf("Server running on port %s", PORT)
 	log.Fatal(router.Run(":" + PORT))
-}
-
-// Helper function to log important environment variables
-func logEnvironmentVariables() {
-	log.Printf("PORT: %s", os.Getenv("PORT"))
-	log.Printf("RAILWAY_ENVIRONMENT: %s", os.Getenv("RAILWAY_ENVIRONMENT"))
-	log.Printf("RAILWAY_STATIC_URL: %s", os.Getenv("RAILWAY_STATIC_URL"))
-
-	// Log other important environment variables your app needs
-	// For example:
-	// log.Printf("DATABASE_URL: %s", maskSensitiveInfo(os.Getenv("DATABASE_URL")))
-	// log.Printf("JWT_SECRET exists: %v", os.Getenv("JWT_SECRET") != "")
-}
-
-// Optional: Helper function to mask sensitive information in logs
-func maskSensitiveInfo(input string) string {
-	if len(input) <= 8 {
-		return "****"
-	}
-	return input[:4] + "..." + input[len(input)-4:]
 }

@@ -11,37 +11,31 @@ import (
 )
 
 func main() {
-	// Attempt to load .env but do NOT crash if it's missing
-	err := godotenv.Load(".env")
-	if err != nil {
-		log.Println("Warning: No .env file found, using system environment variables")
+	// Load .env only in local development
+	if os.Getenv("RAILWAY_ENVIRONMENT") == "" {
+		err := godotenv.Load(".env")
+		if err != nil {
+			log.Println("No .env file found, using system environment variables")
+		}
 	}
 
-	// Get PORT from environment variables, fallback to 8080
+	// Get PORT from environment (Railway sets this automatically)
 	PORT := os.Getenv("PORT")
 	if PORT == "" {
 		PORT = "8080"
 	}
 
-	router := gin.New()
-	router.Use(gin.Logger())
+	// Initialize Gin router
+	router := gin.Default()
 
-	// Enable CORS
-	router.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"*"}, // Change to specific origins for security
-		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
-		ExposeHeaders:    []string{"Content-Length"},
-		AllowCredentials: true,
-	}))
+	// Enable CORS with default settings
+	router.Use(cors.Default())
 
 	// Initialize routes
 	routes.AuthRoutes(router)
 	routes.UserRoutes(router)
 
+	// Start server
 	log.Printf("Server running on port %s", PORT)
-	err = router.Run(":" + PORT)
-	if err != nil {
-		log.Fatalf("Failed to start server: %v", err)
-	}
+	log.Fatal(router.Run(":" + PORT))
 }

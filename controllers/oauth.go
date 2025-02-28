@@ -116,7 +116,7 @@ func GoogleCallback(c *gin.Context) {
 	// Get base URL from environment variable
 	baseURL := os.Getenv("CREATE_RESUME_BASE_URL")
 	if baseURL == "" {
-		baseURL = "http://localhost:3000" // Fallback if not set
+		baseURL = "https://recreate-resume.vercel.app" // Fallback if not set
 	}
 
 	// Redirect user to frontend with tokens (or store in cookies)
